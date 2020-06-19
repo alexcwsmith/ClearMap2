@@ -48,10 +48,12 @@ resources_directory = settings.resources_path
   #%% Initialize alignment 
   
   #init atals and reference files
-  annotation_file, reference_file, distance_file=ano.prepare_annotation_files(
-      slicing=(slice(None),slice(None),slice(8,303)), orientation=(3,2,1),
-      overwrite=True, verbose=True);
-  
+#  annotation_file, reference_file, distance_file=ano.prepare_annotation_files(
+#      slicing=(slice(None),slice(None),slice(8,303)), orientation=(3,2,1),
+#      overwrite=True, verbose=True);
+annotation_file = '/d2/studies/ClearMap/SG_OC_IVSA/Annotations_Horizontal_8-302_Full.tif'
+reference_file = '/d2/studies/ClearMap/SG_OC_IVSA/Atlas_Horizontal_8-302_Full.tif'
+
   #alignment parameter files    
   align_channels_affine_file   = io.join(resources_directory, 'Alignment/align_affine.txt')
   align_reference_affine_file  = io.join(resources_directory, 'Alignment/align_affine.txt')
@@ -69,6 +71,11 @@ resources_directory = settings.resources_path
   io.delete_file(sink)
   io.convert(source, sink, processes=None, verbose=True);
   
+  source = ws.source('autofluorescence');
+  sink   = ws.filename('stitched', postfix='auto')
+  io.delete_file(sink)
+  io.convert(source, sink, processes=None, verbose=True);
+
   
   #%%############################################################################
   ### Resampling and atlas alignment 
@@ -99,7 +106,7 @@ resources_directory = settings.resources_path
       "verbose" : True,                
       };    
   
-  res.resample(ws.filename('autofluorescence'), sink=ws.filename('resampled', postfix='autofluorescence'), **resample_parameter_auto)
+  res.resample(ws.filename('stitched', postfix='auto'), sink=ws.filename('resampled', postfix='autofluorescence'), **resample_parameter_auto)
   
   #p3d.plot([ws.filename('resampled'), ws.filename('resampled', postfix='autofluorescence')])
   
@@ -171,14 +178,15 @@ resources_directory = settings.resources_path
   ACWS_cell_detection_parameter['maxima_detection']['save'] = ws.filename('cells', postfix='maxima')
   ACWS_cell_detection_parameter['dog_filter']=None
   ACWS_cell_detection_parameter
-  processing_parameter = cells.default_cell_detection_processing_parameter.copy();
-  processing_parameter.update(
-      processes = None, # 'serial',
-      size_max = 100, #100, #35,
-      size_min = 30,# 30, #30,
-      overlap  = 16, #32, #10,
-      verbose = True
-      )
+  ACWS_cell_detection_processing_parameter
+#  processing_parameter = cells.default_cell_detection_processing_parameter.copy();
+#  processing_parameter.update(
+#      processes = None, # 'serial',
+#      size_max = 60, #100, #35,
+#      size_min = 20,# 30, #30,
+#      overlap  = 10, #32, #10,
+#      verbose = True
+#      )
   
   cells.detect_cells(ws.filename('stitched'), ws.filename('cells', postfix='raw'),
                      cell_detection_parameter=ACWS_cell_detection_parameter, 
@@ -282,11 +290,17 @@ resources_directory = settings.resources_path
   ###############################################################################
   
   #%% CSV export
-  
+  import pandas as pd
   source = ws.source('cells');
   header = ', '.join([h[0] for h in source.dtype.names]);
-  np.savetxt(ws.filename('cells', extension='csv'), source[:], header=header, delimiter=',')
+  np.savetxt(ws.filename('cells', extension='csv'), source[:], header=header, delimiter=',', fmt='%s')
   
+  df = pd.read_csv(os.path.join(directory, 'cells.csv'))
+  df['Full_Region'] = df.apply(lambda x: ', '.join(x[['region', 'subregion', 'subregion2', 'subregion3']].dropna().astype(str).tolist()), axis=1)
+  counts = pd.DataFrame(df.Full_Region.value_counts())
+  counts = counts.reset_index()
+  counts.columns=['region', 'count']
+  counts.to_csv(os.path.join(directory, 'counts.csv'))
   #%% ClearMap 1.0 export
   
   source = ws.source('cells');
@@ -344,7 +358,7 @@ resources_directory = settings.resources_path
         verbose = True
       )
   
-  vox.voxelize(points, sink=ws.filename('density', postfix='intensities'), **voxelization_parameter);
+  vox.voxelize(coordinates, sink=ws.filename('density', postfix='intensities'), **voxelization_parameter);
   
   #%%
   
